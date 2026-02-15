@@ -22,6 +22,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".CommunityActivity"
+            android:exported="false"
+            android:label="Community"
+            android:theme="@style/Theme.RansomwareDetectionSystem" />
     </application>
 
 </manifest>
