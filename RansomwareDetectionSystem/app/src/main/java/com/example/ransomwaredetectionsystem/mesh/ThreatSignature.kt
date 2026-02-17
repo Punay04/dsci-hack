@@ -1,6 +1,6 @@
 package com.example.ransomwaredetectionsystem.mesh
 
-import kotlin.math.floor
+import org.json.JSONObject
 
 data class ThreatSignature(
     val eventType: String,
@@ -18,38 +18,56 @@ data class ThreatSignature(
         CRITICAL
     }
 
+    fun toJson(): JSONObject {
+        val json = JSONObject()
+        json.put("eventType", eventType)
+        json.put("riskScore", riskScore)
+        json.put("source", source)
+        json.put("timeBucket", timeBucket)
+        json.put("severity", severity.name)
+        json.put("version", version)
+        return json
+    }
+
     companion object {
+
+        fun currentTimeBucket(): Long {
+            return System.currentTimeMillis() / 60000
+        }
+
+        private fun calculateSeverity(score: Int): Severity {
+            return when {
+                score >= 8 -> Severity.CRITICAL
+                score >= 5 -> Severity.HIGH
+                score >= 3 -> Severity.MEDIUM
+                else -> Severity.LOW
+            }
+        }
 
         fun create(
             eventType: String,
             riskScore: Int,
             source: String
         ): ThreatSignature {
-
-            val bucket = currentTimeBucket()
-            val severity = classifySeverity(riskScore)
-
             return ThreatSignature(
                 eventType = eventType,
                 riskScore = riskScore,
                 source = source,
-                timeBucket = bucket,
-                severity = severity
+                timeBucket = currentTimeBucket(),
+                severity = calculateSeverity(riskScore),
+                version = 1
             )
         }
 
-        private fun currentTimeBucket(): Long {
-            // 10-second window bucket
-            return floor(System.currentTimeMillis() / 10_000.0).toLong()
-        }
-
-        private fun classifySeverity(score: Int): Severity {
-            return when {
-                score >= 15 -> Severity.CRITICAL
-                score >= 10 -> Severity.HIGH
-                score >= 5 -> Severity.MEDIUM
-                else -> Severity.LOW
-            }
+        fun fromJson(json: JSONObject): ThreatSignature {
+            return ThreatSignature(
+                eventType = json.getString("eventType"),
+                riskScore = json.getInt("riskScore"),
+                source = json.getString("source"),
+                timeBucket = json.getLong("timeBucket"),
+                severity = Severity.valueOf(json.getString("severity")),
+                version = json.getInt("version")
+            )
         }
     }
 }

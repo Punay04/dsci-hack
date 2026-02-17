@@ -3,65 +3,63 @@ package com.example.ransomwaredetectionsystem.mesh
 import android.content.Context
 import android.util.Log
 import org.json.JSONArray
-import org.json.JSONObject
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class ThreatStore(context: Context) {
 
     private val prefs =
-        context.getSharedPreferences("meshnet_store", Context.MODE_PRIVATE)
+        context.getSharedPreferences("mesh_threat_store", Context.MODE_PRIVATE)
 
-    private val key = "threat_signatures"
+    private val lock = ReentrantLock()
+    private val maxEntries = 500
 
     fun save(signature: ThreatSignature) {
-        val list = getAll().toMutableList()
-        list.add(signature)
+        lock.withLock {
+            try {
+                val all = getAll().toMutableList()
 
-        val jsonArray = JSONArray()
+                if (all.size >= maxEntries) {
+                    Log.w("MeshNet", "ThreatStore full. Removing oldest entry.")
+                    all.removeAt(0)
+                }
 
-        list.forEach {
-            val obj = JSONObject()
-            obj.put("eventType", it.eventType)
-            obj.put("riskScore", it.riskScore)
-            obj.put("source", it.source)
-            obj.put("timeBucket", it.timeBucket)
-            obj.put("severity", it.severity.name)
-            obj.put("version", it.version)
-            jsonArray.put(obj)
+                all.add(signature)
+
+                val jsonArray = JSONArray()
+                all.forEach { jsonArray.put(it.toJson()) }
+
+                prefs.edit()
+                    .putString("signatures", jsonArray.toString())
+                    .apply()
+
+                Log.d("MeshNet", "Signature saved. Total count: ${all.size}")
+            } catch (e: Exception) {
+                Log.e("MeshNet", "Error saving signature", e)
+            }
         }
-
-        prefs.edit().putString(key, jsonArray.toString()).apply()
-
-        Log.d("MeshNet", "Signature saved. Total count: ${list.size}")
     }
 
     fun getAll(): List<ThreatSignature> {
-        val json = prefs.getString(key, null) ?: return emptyList()
-        val array = JSONArray(json)
+        lock.withLock {
+            val raw = prefs.getString("signatures", null) ?: return emptyList()
 
-        val result = mutableListOf<ThreatSignature>()
-
-        for (i in 0 until array.length()) {
-            val obj = array.getJSONObject(i)
-
-            result.add(
-                ThreatSignature(
-                    eventType = obj.getString("eventType"),
-                    riskScore = obj.getInt("riskScore"),
-                    source = obj.getString("source"),
-                    timeBucket = obj.getLong("timeBucket"),
-                    severity = ThreatSignature.Severity.valueOf(
-                        obj.getString("severity")
-                    ),
-                    version = obj.getInt("version")
-                )
-            )
+            return try {
+                val array = JSONArray(raw)
+                List(array.length()) { index ->
+                    ThreatSignature.fromJson(array.getJSONObject(index))
+                }
+            } catch (e: Exception) {
+                Log.e("MeshNet", "Error parsing stored signatures", e)
+                emptyList()
+            }
         }
-
-        return result
     }
 
     fun clear() {
-        prefs.edit().remove(key).apply()
-        Log.i("MeshNet", "ThreatStore cleared")
+        lock.withLock {
+            prefs.edit().remove("signatures").apply()
+            Log.d("MeshNet", "ThreatStore cleared")
+        }
     }
 }
